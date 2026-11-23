@@ -1,0 +1,58 @@
+name: Build unsigned IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main, master]
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - name: Check out
+        uses: actions/checkout@v4
+
+      - name: Install XcodeGen
+        run: brew install xcodegen
+
+      - name: Generate the Xcode project
+        run: xcodegen generate
+
+      - name: Build for iPhone and iPad (signing off)
+        run: |
+          set -o pipefail
+          xcodebuild \
+            -project InkNote.xcodeproj \
+            -scheme InkNote \
+            -configuration Release \
+            -sdk iphoneos \
+            -destination 'generic/platform=iOS' \
+            -derivedDataPath build \
+            ONLY_ACTIVE_ARCH=NO \
+            CODE_SIGNING_ALLOWED=NO \
+            CODE_SIGNING_REQUIRED=NO \
+            CODE_SIGN_IDENTITY="" \
+            clean build 2>&1 | tee build.log
+
+      - name: Package the unsigned IPA
+        run: |
+          APP="build/Build/Products/Release-iphoneos/InkNote.app"
+          test -d "$APP"
+          rm -rf Payload InkNote-unsigned.ipa
+          mkdir Payload
+          cp -R "$APP" Payload/
+          zip -qry InkNote-unsigned.ipa Payload
+          ls -lh InkNote-unsigned.ipa
+
+      - name: Upload the IPA
+        uses: actions/upload-artifact@v4
+        with:
+          name: InkNote-unsigned-ipa
+          path: InkNote-unsigned.ipa
+
+      - name: Upload the build log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: build-log
+          path: build.log
